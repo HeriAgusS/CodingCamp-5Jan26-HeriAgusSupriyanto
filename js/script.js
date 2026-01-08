@@ -1,124 +1,197 @@
-// State aplikasi
 let todos = [];
+let currentFilter = "all";
+let sortAscending = true;
 
-// Seleksi Elemen
+// DOM Elements
 const todoInput = document.getElementById("todo-input");
 const dateInput = document.getElementById("date-input");
 const addBtn = document.getElementById("add-btn");
-const todoList = document.getElementById("todo-list");
-const filterInput = document.getElementById("filter-input");
+const todoBody = document.getElementById("todo-body");
+const searchInput = document.getElementById("search-input");
 const errorMsg = document.getElementById("error-msg");
+const emptyState = document.getElementById("empty-state");
 
-// Fungsi: Tambah Tugas
+// Theme Switcher
+function changeTheme(theme) {
+  document.documentElement.setAttribute("data-theme", theme);
+  localStorage.setItem("has-theme", theme);
+}
+changeTheme(localStorage.getItem("has-theme") || "light");
+
+// --- CRUD LOGIC ---
+
+function updateStats() {
+  const total = todos.length;
+  const completed = todos.filter((t) => t.completed).length;
+  const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
+
+  document.getElementById("stat-total").innerText = total;
+  document.getElementById("stat-completed").innerText = completed;
+  document.getElementById("stat-pending").innerText = total - completed;
+  document.getElementById("stat-progress").innerText = `${progress}%`;
+
+  document.getElementById("total-tasks").innerText = `Total: ${total} Tugas`;
+  document.getElementById(
+    "completed-tasks"
+  ).innerText = `Selesai: ${completed}`;
+}
+
 function addTodo() {
-  const taskValue = todoInput.value.trim();
-  const dateValue = dateInput.value;
-
-  // Validasi
-  if (!taskValue || !dateValue) {
-    errorMsg.textContent = "Kolom teks dan tanggal wajib diisi!";
+  if (!todoInput.value || !dateInput.value) {
+    errorMsg.innerText = "Isi tugas dan tanggal!";
     return;
   }
-
-  errorMsg.textContent = "";
-
-  const newTodo = {
+  errorMsg.innerText = "";
+  todos.push({
     id: Date.now(),
-    task: taskValue,
-    date: dateValue,
-    completed: false, // Properti untuk 'Mark as Done'
-  };
-
-  todos.push(newTodo);
-  renderTodos(todos);
-
-  // Reset Form
-  todoInput.value = "";
-  dateInput.value = "";
-}
-
-// Fungsi: Hapus Tugas
-function deleteTodo(id) {
-  todos = todos.filter((todo) => todo.id !== id);
-  renderTodos(todos);
-}
-
-// Fungsi: Mark as Done (Toggle Selesai)
-function toggleDone(id) {
-  todos = todos.map((todo) => {
-    if (todo.id === id) {
-      return { ...todo, completed: !todo.completed };
-    }
-    return todo;
+    task: todoInput.value,
+    date: dateInput.value,
+    completed: false,
+    subtasks: [], // Inisialisasi array subtasks
   });
-  renderTodos(todos);
+  todoInput.value = "";
+  renderTodos();
 }
 
-// Fungsi: Filter (Pencarian)
-function filterTodos() {
-  const keyword = filterInput.value.toLowerCase();
-  const filtered = todos.filter((todo) =>
-    todo.task.toLowerCase().includes(keyword)
-  );
-  renderTodos(filtered);
-}
-
-// Fungsi: Render List ke HTML
-function renderTodos(data) {
-  todoList.innerHTML = "";
-
-  if (data.length === 0) {
-    todoList.innerHTML = `<p class="text-center text-gray-400 text-sm py-4">Tidak ada tugas ditemukan.</p>`;
-    return;
+// Fungsi Subtask baru
+function addSubtask(parentId) {
+  const subtaskName = prompt("Masukkan nama subtask:");
+  if (subtaskName) {
+    const todo = todos.find((t) => t.id === parentId);
+    todo.subtasks.push({
+      id: Date.now(),
+      text: subtaskName,
+      completed: false,
+    });
+    renderTodos();
   }
+}
 
-  data.forEach((todo) => {
-    const li = document.createElement("li");
-    li.className = `todo-item flex items-center justify-between p-4 rounded-xl border transition-all ${
-      todo.completed
-        ? "bg-gray-50 border-gray-200"
-        : "bg-white border-blue-100 shadow-sm"
-    }`;
+// Perbaikan fungsi Edit (Nama & Tanggal)
+function editTodo(id) {
+  const todo = todos.find((t) => t.id === id);
+  const newName = prompt("Edit Nama Tugas:", todo.task);
+  if (newName === null) return; // User cancel
 
-    li.innerHTML = `
-            <div class="flex items-center gap-3 overflow-hidden">
-                <input type="checkbox" ${todo.completed ? "checked" : ""} 
-                    onchange="toggleDone(${todo.id})"
-                    class="w-5 h-5 cursor-pointer accent-blue-600">
-                <div class="flex flex-col truncate">
-                    <span class="font-semibold ${
+  const newDate = prompt("Edit Tanggal (YYYY-MM-DD):", todo.date);
+  if (newDate === null) return;
+
+  todo.task = newName || todo.task;
+  todo.date = newDate || todo.date;
+  renderTodos();
+}
+
+function toggleTodo(id) {
+  const todo = todos.find((t) => t.id === id);
+  todo.completed = !todo.completed;
+  renderTodos();
+}
+
+function deleteTodo(id) {
+  todos = todos.filter((t) => t.id !== id);
+  renderTodos();
+}
+
+function deleteAll() {
+  if (confirm("Hapus semua tugas?")) {
+    todos = [];
+    renderTodos();
+  }
+}
+
+function setFilter(f) {
+  currentFilter = f;
+  renderTodos();
+}
+function toggleSort() {
+  sortAscending = !sortAscending;
+  renderTodos();
+}
+
+function renderTodos() {
+  const term = searchInput.value.toLowerCase();
+  let filtered = todos.filter((t) => {
+    const match = t.task.toLowerCase().includes(term);
+    if (currentFilter === "completed") return t.completed && match;
+    if (currentFilter === "pending") return !t.completed && match;
+    return match;
+  });
+
+  filtered.sort((a, b) =>
+    sortAscending
+      ? new Date(a.date) - new Date(b.date)
+      : new Date(b.date) - new Date(a.date)
+  );
+
+  todoBody.innerHTML = "";
+  updateStats();
+
+  if (filtered.length === 0) {
+    emptyState.classList.remove("hidden");
+  } else {
+    emptyState.classList.add("hidden");
+    filtered.forEach((todo) => {
+      const row = document.createElement("tr");
+      row.className =
+        "hover:bg-base-200/40 transition-all border-b border-base-100";
+
+      // Subtasks HTML
+      const subtasksHtml = todo.subtasks
+        .map(
+          (st) => `
+                <div class="flex items-center gap-2 mt-1 ml-4 opacity-70 text-[11px]">
+                    <i class="fa-solid fa-caret-right"></i> ${st.text}
+                </div>
+            `
+        )
+        .join("");
+
+      row.innerHTML = `
+                <td class="px-8 py-5">
+                    <div class="font-bold ${
                       todo.completed
-                        ? "line-through text-gray-400"
-                        : "text-gray-700"
+                        ? "line-through opacity-30 italic"
+                        : "text-base-content/80"
                     }">
                         ${todo.task}
-                    </span>
-                    <span class="text-xs text-gray-400">${todo.date}</span>
-                </div>
-            </div>
-            <button onclick="deleteTodo(${todo.id})" 
-                class="ml-2 p-2 text-gray-400 hover:text-red-500 transition-colors">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-            </button>
-        `;
-    todoList.appendChild(li);
-  });
-  const totalTasks = document.getElementById("total-tasks");
-  const completedTasks = document.getElementById("completed-tasks");
-
-  const countCompleted = todos.filter((t) => t.completed).length;
-
-  totalTasks.textContent = `Total: ${todos.length} Tugas`;
-  completedTasks.textContent = `Selesai: ${countCompleted}`;
+                    </div>
+                    ${subtasksHtml}
+                </td>
+                <td class="px-8 py-5 text-xs opacity-50 font-medium">${
+                  todo.date
+                }</td>
+                <td class="px-8 py-5 text-center">
+                    <button onclick="toggleTodo(${todo.id})" class="badge ${
+        todo.completed ? "badge-success" : "badge-warning"
+      } border-none font-bold p-3 cursor-pointer hover:scale-105 transition-transform">
+                        ${todo.completed ? "Completed" : "Pending"}
+                    </button>
+                </td>
+                <td class="px-8 py-5">
+                    <div class="flex justify-end gap-1">
+                        <button onclick="addSubtask(${
+                          todo.id
+                        })" class="btn btn-circle btn-xs bg-info/20 text-info border-none hover:bg-info hover:text-white" title="Add Subtask">
+                            <i class="fa-solid fa-plus scale-75"></i>
+                        </button>
+                        <button onclick="editTodo(${
+                          todo.id
+                        })" class="btn btn-circle btn-xs bg-warning/20 text-warning border-none hover:bg-warning hover:text-white" title="Edit Task">
+                            <i class="fa-solid fa-pen scale-75"></i>
+                        </button>
+                        <button onclick="deleteTodo(${
+                          todo.id
+                        })" class="btn btn-circle btn-xs bg-error/20 text-error border-none hover:bg-error hover:text-white" title="Delete">
+                            <i class="fa-solid fa-trash scale-75"></i>
+                        </button>
+                    </div>
+                </td>
+            `;
+      todoBody.appendChild(row);
+    });
+  }
 }
 
-// Event Listeners
 addBtn.addEventListener("click", addTodo);
-filterInput.addEventListener("input", filterTodos);
-
-// Jalankan fungsi tambah saat menekan tombol 'Enter'
-todoInput.addEventListener("keypress", (e) => {
-  if (e.key === "Enter") addTodo();
-});
+searchInput.addEventListener("input", renderTodos);
+renderTodos();
